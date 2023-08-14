@@ -1,0 +1,7 @@
+{
+  "name": "clusterio-exp_util",
+  "version": "0.0.1",
+  "description": "Clusterio module for Lua overrides and compatibility utils",
+  "author": "Cooldude2606 <https://github.com/Cooldude2606>",
+  "license": "MIT"
+}
