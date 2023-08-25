@@ -1,7 +1,8 @@
 {
 	"name": "exp_util",
 	"load": [
-		"include/package.lua"
+		"include/package.lua",
+		"global.lua"
 	],
 	"require": [
 		"include/math.lua",
