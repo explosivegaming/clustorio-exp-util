@@ -4,6 +4,7 @@
   "description": "Clusterio module for Lua overrides and compatibility utils",
   "author": "Cooldude2606 <https://github.com/Cooldude2606>",
   "license": "MIT",
+  "repository": "explosivegaming/clustorio-exp-util",
   "main": "dist/plugin/info.js",
   "scripts": {
     "prepare": "tsc --build && webpack-cli --env production",
