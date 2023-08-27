@@ -136,6 +136,32 @@ function Common.auto_complete(options, input, use_key, rtn_key)
     end
 end
 
+--- Formats any value to be presented in a safe and human readable format
+-- @param value The value to be formated
+-- @return The formated version of the value
+function Common.format_any(value)
+    if type(value) == "table" or type(value) == "userdata" then
+        if type(value.__self) == "userdata" or type(value) == "userdata" then
+            if value.valid then -- userdata
+                return "<userdata:"..value.object_name..">"
+            else -- invalid userdata
+                return "<userdata:"..value.object_name..":invalid>"
+            end
+        elseif type(value[1]) == "string" and string.find(value[1], ".+[.].+") and not string.find(value[1], "%s") then
+            return value -- locale string
+        elseif getmetatable(value) ~= nil and not tostring(value):find("table: 0x") then
+            return tostring(value) -- has __tostring metamethod
+        else -- plain table
+            return table.inspect(value, {depth=5, indent=' ', newline='\n'})
+        end
+    elseif type(value) == "function" then -- function
+        local func_name = debug.getinfo(2, "n").name or "anonymous"
+        return "<function:"..func_name..">"
+    else -- not: table, userdata, or function
+        return tostring(value)
+    end
+end
+
 --- Format a tick value into one of a selection of pre-defined formats (short, long, clock)
 -- @tparam number ticks The number of ticks which will be represented, can be any duration or time value
 -- @tparam string format The format to display, must be one of: short, long, clock
