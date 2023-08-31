@@ -18,14 +18,8 @@ global.myCallback = Async.register(function()
     game.print("I got called!")
 end)
 
--- Run must be used unless you track your callbacks and use Async.restore during on_load
-Async.run(global.myCallback)
-
--- Using Async.restore during on_load to restore all functionality of the async function
-local function on_load()
-    Async.restore(global.myCallback)
-    global.myCallback()
-end
+-- The function can be called just like any other function
+global.myCallback()
 
 @usage-- Creating singleton threads / tasks
 -- This allows you to split large tasks across multiple ticks to prevent lag
@@ -94,8 +88,13 @@ Async._metatable = {
     __class = "AsyncFunction"
 }
 
-global.async_next = {} -- Stores a queue of async functions to be executed on the next tick
-global.async_queue = {} -- Stores a queue of async functions to be executed on a later tick
+script.register_metatable("AsyncFunction", Async._metatable)
+
+local function ensure_global()
+    if global.async_next then return end
+    global.async_next = {} -- Stores a queue of async functions to be executed on the next tick
+    global.async_queue = {} -- Stores a queue of async functions to be executed on a later tick
+end
 
 --- Static Methods.
 -- Static methods of the class
@@ -107,30 +106,14 @@ global.async_queue = {} -- Stores a queue of async functions to be executed on a
 function Async.register(func)
     ExpUtil.assert_not_runtime()
 
-    local my_id = #Async._functions + 1
+    local debug_info = debug.getinfo(2, "Sn")
+    local file_name = debug_info.source:match('^.+/currently%-playing/(.+)$'):sub(1, -5)
+    local func_name = debug_info.name or "<anonymous:"..debug_info.linedefined..">"
+    local my_id = file_name..":"..func_name
+
     Async._functions[my_id] = func
     Async._queue_pressure[my_id] = 0
-
-    local func_name = debug.getinfo(2, "n").name or "<anonymous>"
-    return setmetatable({ id = my_id, name = func_name }, Async._metatable)
-end
-
---- Restore an existing async function's methods, to be used on globals during on_load
--- @tparam AsyncFunction afunc The async function to restore the methods of
--- @treturn AsyncFunction The restored async function
-function Async.restore(afunc)
-    local id = assert(afunc.id, "Argument is not an async function")
-    assert(Async._functions[id], "Async function is not registered")
-    return setmetatable(afunc, Async._metatable)
-end
-
---- Run an async function without needing to restore its methods, included as a common use case
--- @tparam AsyncFunction afunc The async function to run
--- @param ... The arguments to call the function with
-function Async.run(afunc, ...)
-    local id = assert(afunc.id, "Argument is not an async function")
-    assert(Async._functions[id], "Async function is not registered")
-    Async._prototype.start_now(afunc, ...)
+    return setmetatable({ id = my_id }, Async._metatable)
 end
 
 --- Prototype Methods.
@@ -143,6 +126,7 @@ function Async._prototype:start_soon(...)
     assert(Async._functions[self.id], "Async function is not registered")
     Async._queue_pressure[self.id] = Async._queue_pressure[self.id] + 1
 
+    ensure_global()
     local index = #global.async_next + 1
     global.async_next[index] = {
         id = self.id,
@@ -157,6 +141,7 @@ function Async._prototype:start_after(ticks, ...)
     assert(Async._functions[self.id], "Async function is not registered")
     Async._queue_pressure[self.id] = Async._queue_pressure[self.id] + 1
 
+    ensure_global()
     local index = #global.async_queue + 1
     global.async_queue[index] = {
         id = self.id,
@@ -242,6 +227,7 @@ end
 
 --- Each tick, run all next tick functions, then check if any in the queue need to be executed
 local function on_tick()
+    ensure_global()
     local tick = game.tick
     for index, pending in ipairs(global.async_next) do
         global.async_next[index] = nil
@@ -258,6 +244,7 @@ end
 
 --- On load, check the queue status and update the pressure values
 local function on_load()
+    if not global.async_next then return end
     for _, pending in ipairs(global.async_next) do
         local count = Async._queue_pressure[pending[1].id]
         Async._queue_pressure[pending[1].id] = count + 1

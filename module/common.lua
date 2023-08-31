@@ -113,6 +113,19 @@ function Common.safe_file_path(level)
     return getinfo(level+1, 'S').source:match('^.+/currently%-playing/(.+)$'):sub(1, -5)
 end
 
+--- Returns the name of your module, this assumes your module is stored within /modules (which it is for clustorio)
+-- @tparam[opt=1] number level The level of the stack to get the module of, a value of 1 is the caller of this function
+-- @treturn string The name of the module at the given stack frame
+function Common.get_module_name(level)
+    local file_within_module = getinfo((level or 1)+1, 'S').source:match('^.+/currently%-playing/modules/(.+)$'):sub(1, -5)
+    local next_slash = file_within_module:find("/")
+    if next_slash then
+        return file_within_module:sub(1, next_slash-1)
+    else
+        return file_within_module
+    end
+end
+
 --- Attempt a simple autocomplete search from a set of options
 -- @tparam table options The table representing the possible options which can be selected
 -- @tparam string input The user input string which should be matched to an option

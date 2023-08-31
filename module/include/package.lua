@@ -1,5 +1,7 @@
 --luacheck:ignore global package
 
+local Clustorio = require("modules/clusterio/api")
+
 --- Enum values for the different lifecycle stages within a factorio module
 -- Info on the data lifecycle and how we use it: https://github.com/Refactorio/RedMew/wiki/The-data-lifecycle
 -- We start in control stage and so values 1 thorough 3 are only present for completeness
@@ -22,7 +24,7 @@ return setmetatable({
     on_load = function() package.lifecycle = package.lifecycle_stage.load end,
     on_configuration_changed = function() package.lifecycle = package.lifecycle_stage.config_change end,
     events = {
-        on_server_startup = function() package.lifecycle = package.lifecycle_stage.runtime end,
+        [Clustorio.events.on_server_startup] = function() package.lifecycle = package.lifecycle_stage.runtime end,
     }
 }, {
     __index = package
