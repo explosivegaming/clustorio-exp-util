@@ -65,6 +65,17 @@ function Global.register_metatable(name, tbl)
     script.register_metatable(module_name.."."..name, tbl)
 end
 
+--- Restore aliases on load, we do not need to initialise data during this event
+function Global.on_load()
+    local registered_tables = global.registered_tables
+	if registered_tables == nil then return end
+	for name, data in pairs(Global.registered) do
+        if registered_tables[name] ~= nil then
+			data.cb(registered_tables[name])
+        end
+    end
+end
+
 --- Event Handler, sets initial values if needed and calls all callbacks
 local function on_server_startup()
     local registered_tables = global.registered_tables

@@ -10,5 +10,8 @@
 		"include/table.lua",
 		"include/print.lua",
 		"include/require.lua"
-	]
+	],
+	"dependencies": {
+		"clusterio": "*"
+	}
 }
