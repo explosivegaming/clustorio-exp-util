@@ -45,7 +45,8 @@ local Global = {
 -- @tparam function callback The callback used to replace local references and metatables
 function Global.register(tbl, callback)
     ExpUtil.assert_not_runtime()
-    ExpUtil.assert_argument_types("table", "function")
+    ExpUtil.assert_argument_type(tbl, "table", 1, "tbl")
+    ExpUtil.assert_argument_type(callback, "function", 2, "callback")
 
     local name = ExpUtil.safe_file_path(2)
     if Global.registered[name] then
@@ -54,7 +55,7 @@ function Global.register(tbl, callback)
 
     Global.registered[name] = {
         init = tbl,
-        cb = callback
+        callback = callback
     }
 end
 
@@ -67,28 +68,28 @@ end
 
 --- Restore aliases on load, we do not need to initialise data during this event
 function Global.on_load()
-    local registered_tables = global.registered_tables
-	if registered_tables == nil then return end
+    local globals = global.exp_global
+	if globals == nil then return end
 	for name, data in pairs(Global.registered) do
-        if registered_tables[name] ~= nil then
-			data.cb(registered_tables[name])
+        if globals[name] ~= nil then
+			data.callback(globals[name])
         end
     end
 end
 
 --- Event Handler, sets initial values if needed and calls all callbacks
 local function on_server_startup()
-    local registered_tables = global.registered_tables
-    if global.registered_tables == nil then
-        registered_tables = {}
-        global.registered_tables = registered_tables
+    local globals = global.exp_global
+    if global.exp_global == nil then
+        globals = {}
+        global.exp_global = globals
     end
 
     for name, data in pairs(Global.registered) do
-        if registered_tables[name] == nil then
-            registered_tables[name] = data.init
+        if globals[name] == nil then
+            globals[name] = data.init
         end
-        data.cb(registered_tables[name])
+        data.callback(globals[name])
     end
 end
 

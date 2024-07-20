@@ -21,7 +21,7 @@ end)
 -- The function can be called just like any other function
 global.myCallback()
 
-@usage-- Creating singleton threads / tasks
+@usage-- Creating singleton tasks (best used with global data)
 -- This allows you to split large tasks across multiple ticks to prevent lag
 local myTask = Async.register(function(remainingWork)
     game.print("Working... " .. remainingWork)
@@ -59,7 +59,7 @@ end)
 
 local function on_function_complete(event)
     if event.async_id ~= fillTableAsync.id then return end
-    local filledTable = unpack(event.return_values)
+    local filledTable = table.unpack(event.return_values)
     game.print("Table has length of " .. #filledTable)
 end
 
@@ -67,6 +67,7 @@ fillTableAsync({}, "foo", 10) -- Puts 10 lots of foo into the table
 
 ]]
 
+local Clustorio = require("modules/clusterio/api")
 local ExpUtil = require("modules.exp_util.common") --- @dep exp_util.common
 
 local Async = {
@@ -90,10 +91,22 @@ Async._metatable = {
 
 script.register_metatable("AsyncFunction", Async._metatable)
 
-local function ensure_global()
-    if global.async_next then return end
-    global.async_next = {} -- Stores a queue of async functions to be executed on the next tick
-    global.async_queue = {} -- Stores a queue of async functions to be executed on a later tick
+--- Globals
+local async_next -- Stores a queue of async functions to be executed on the next tick
+local async_queue -- Stores a queue of async functions to be executed on a later tick
+
+--- Insert an item into the priority queue
+local function add_to_queue(pending)
+	local tick = pending.tick
+	for index = #async_queue, 1, -1 do
+		if async_queue[index].tick >= tick then
+			async_queue[index + 1] = pending
+			return
+		else
+			async_queue[index + 1] = async_queue[index]
+		end
+	end
+	async_queue[1] = pending
 end
 
 --- Static Methods.
@@ -105,15 +118,13 @@ end
 -- @treturn AsyncFunction The newly registered async function
 function Async.register(func)
     ExpUtil.assert_not_runtime()
+	ExpUtil.assert_argument_type(func, "function", 1, "func")
 
-    local debug_info = debug.getinfo(2, "Sn")
-    local file_name = debug_info.source:match('^.+/currently%-playing/(.+)$'):sub(1, -5)
-    local func_name = debug_info.name or "<anonymous:"..debug_info.linedefined..">"
-    local my_id = file_name..":"..func_name
+    local id = ExpUtil.get_function_name(func)
+    Async._functions[id] = func
+    Async._queue_pressure[id] = 0
 
-    Async._functions[my_id] = func
-    Async._queue_pressure[my_id] = 0
-    return setmetatable({ id = my_id }, Async._metatable)
+    return setmetatable({ id = id }, Async._metatable)
 end
 
 --- Prototype Methods.
@@ -126,9 +137,7 @@ function Async._prototype:start_soon(...)
     assert(Async._functions[self.id], "Async function is not registered")
     Async._queue_pressure[self.id] = Async._queue_pressure[self.id] + 1
 
-    ensure_global()
-    local index = #global.async_next + 1
-    global.async_next[index] = {
+    async_next[#async_next + 1] = {
         id = self.id,
         args = {...}
     }
@@ -138,16 +147,15 @@ end
 -- @tparam number ticks The number of ticks to call the function after
 -- @param ... The arguments to call the function with
 function Async._prototype:start_after(ticks, ...)
+	ExpUtil.assert_argument_type(ticks, "number", 1, "ticks")
     assert(Async._functions[self.id], "Async function is not registered")
     Async._queue_pressure[self.id] = Async._queue_pressure[self.id] + 1
 
-    ensure_global()
-    local index = #global.async_queue + 1
-    global.async_queue[index] = {
+    add_to_queue({
         id = self.id,
         args = {...},
         tick = game.tick + ticks
-    }
+    })
 end
 
 --- Run an async function on the next tick if the function is not already queued, allows singleton task/thread behaviour
@@ -162,19 +170,21 @@ end
 -- @param ... The arguments to call the function with
 function Async._prototype:start_now(...)
     assert(Async._functions[self.id], "Async function is not registered")
-    local rtn = { Async._functions[self.id](...) }
-    if rtn[1] == Async.status.continue then
-        Async._prototype.start_soon(self, unpack(rtn[2])) -- proto used to allow reuse in Async.run
-    elseif rtn[1] == Async.status.delay then
-        Async._prototype.start_after(self, rtn[2], unpack(rtn[3])) -- proto used to allow reuse in Async.run
-    else
+	local status, rtn1, rtn2 = Async._functions[self.id](...)
+    if status == Async.status.continue then
+        self:start_soon(table.unpack(rtn1))
+    elseif status == Async.status.delay then
+        self:start_after(rtn1, table.unpack(rtn2))
+    elseif status == Async.status.complete or status == nil then
         -- The function has finished execution, raise the custom event
         script.raise_event(Async.on_function_complete, {
             event = Async.on_function_complete,
             tick = game.tick,
             async_id = self.id,
-            returned = rtn
+            returned = rtn1
         })
+	else
+		error("Async function " .. self.id .. " returned an invalid status: " .. table.inspect(status))
     end
 end
 
@@ -182,79 +192,127 @@ end
 -- Return values used by async functions
 -- @section async-status
 
+local empty_table = {} -- File scope to allow for reuse
+
 --- Default status, will raise on_function_complete
 -- @param ... The return value of the async call
 function Async.status.complete(...)
-    return ...
+	if ... == nil then
+		return Async.status.complete, empty_table
+	end
+    return Async.status.complete, {...}
 end
 
 --- Will queue the function to be called again on the next tick using the new arguments
 -- @param ... The arguments to call the function with
 function Async.status.continue(...)
+	if ... == nil then
+		return Async.status.continue, empty_table
+	end
     return Async.status.continue, {...}
 end
 
 --- Will queue the function to be called again on a later tick using the new arguments
 -- @param ... The arguments to call the function with
 function Async.status.delay(ticks, ...)
+	ExpUtil.assert_argument_type(ticks, "number", 1, "ticks")
+	if ... == nil then
+		return Async.status.continue, ticks, empty_table
+	end
     return Async.status.delay, ticks, {...}
 end
 
 --- Executes an async function and processes the return value
-local function exec(pending)
-    local rtn = { Async._functions[pending.id](unpack(pending.args)) }
-    if rtn[1] == Async.status.continue then
-        local index = #global.async_next + 1
-        global.async_next[index] = pending
+local function exec(pending, tick, new_next, new_queue)
+    local status, rtn1, rtn2 = Async._functions[pending.id](table.unpack(pending.args))
+    if status == Async.status.continue then
+        new_next[#new_next + 1] = pending
         pending.tick = nil
-        pending.args = rtn[2]
-    elseif rtn[1] == Async.status.delay then
-        local index = #global.async_queue + 1
-        global.async_queue[index] = pending
-        pending.tick = game.tick + rtn[2]
-        pending.args = rtn[3]
-    else
+        pending.args = rtn1
+    elseif status == Async.status.delay then
+		new_queue[#new_queue + 1] = pending
+        pending.tick = tick + rtn1
+        pending.args = rtn2
+	elseif status == Async.status.complete or status == nil then
         -- The function has finished execution, raise the custom event
         Async._queue_pressure[pending.id] = Async._queue_pressure[pending.id] - 1
         script.raise_event(Async.on_function_complete, {
             event = Async.on_function_complete,
-            tick = game.tick,
+            tick = tick,
             async_id = pending.id,
-            returned = rtn
+            returned = rtn1
         })
+	else
+		error("Async function " .. pending.id .. " returned an invalid status: " .. table.inspect(status))
     end
 end
 
+local new_next, new_queue = {}, {} -- File scope to allow for reuse
 --- Each tick, run all next tick functions, then check if any in the queue need to be executed
 local function on_tick()
-    ensure_global()
+	if async_next == nil then return end
     local tick = game.tick
-    for index, pending in ipairs(global.async_next) do
-        global.async_next[index] = nil
-        exec(pending)
+
+	-- Execute all pending functions
+    for index = 1, #async_next, 1 do
+        exec(async_next[index], tick, new_next, new_queue)
+        async_next[index] = nil
     end
-    for index, pending in ipairs(global.async_queue) do
-        -- TODO implement a priority queue based on tick to allow for early return
-        if pending.tick <= tick then
-            global.async_queue[index] = nil
-            exec(pending)
-        end
+    for index = #async_queue, 1, -1 do
+		local pending = async_queue[index]
+        if pending.tick > tick then
+			break;
+		end
+        exec(pending, tick, new_next, new_queue)
+        async_queue[index] = nil
+    end
+
+	-- Queue any functions that did not complete
+	for index = 1, #new_next, 1 do
+        async_next[index] = new_next[index]
+        new_next[index] = nil
+    end
+	for index = 1, #new_queue, 1 do
+        add_to_queue(new_next[index])
+        new_next[index] = nil
     end
 end
 
 --- On load, check the queue status and update the pressure values
 local function on_load()
-    if not global.async_next then return end
-    for _, pending in ipairs(global.async_next) do
-        local count = Async._queue_pressure[pending[1].id]
-        Async._queue_pressure[pending[1].id] = count + 1
+	if global.exp_async_next == nil then return end
+    async_next = global.exp_async_next
+	async_queue = global.exp_async_queue
+    for _, pending in ipairs(async_next) do
+        local count = Async._queue_pressure[pending.id]
+		if count == nil then
+			warn("Pending async function missing after load: " .. pending.id)
+			Async._functions[pending.id] = function() end -- NOP
+			count = 0
+		end
+		Async._queue_pressure[pending.id] = count + 1
+	end
+    for _, pending in ipairs(async_queue) do
+        local count = Async._queue_pressure[pending.id]
+		if count == nil then
+			warn("Pending async function missing after load: " .. pending.id)
+			Async._functions[pending.id] = function() end -- NOP
+			count = 0
+		end
+		Async._queue_pressure[pending.id] = count + 1
     end
-    for _, pending in ipairs(global.async_queue) do
-        local count = Async._queue_pressure[pending[1].id]
-        Async._queue_pressure[pending[1].id] = count + 1
-    end
+end
+
+--- On server startup initialise the global data
+local function on_server_startup()
+	if global.exp_async_next == nil then
+		global.exp_async_next = {}
+		global.exp_async_queue = {}
+	end
+	on_load()
 end
 
 Async.on_load = on_load
 Async.events[defines.events.on_tick] = on_tick
+Async.events[Clustorio.events.on_server_startup] = on_server_startup
 return Async

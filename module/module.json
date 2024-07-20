@@ -2,14 +2,14 @@
 	"name": "exp_util",
 	"load": [
 		"include/package.lua",
+		"include/require.lua",
 		"global.lua",
 		"async.lua"
 	],
 	"require": [
 		"include/math.lua",
 		"include/table.lua",
-		"include/print.lua",
-		"include/require.lua"
+		"include/print.lua"
 	],
 	"dependencies": {
 		"clusterio": "*"

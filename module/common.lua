@@ -5,8 +5,8 @@
 ]]
 
 local assert = assert
-local getlocal = debug.getlocal
-local getupvalue = debug.getupvalue
+--local getlocal = debug.getlocal
+--local getupvalue = debug.getupvalue
 local getinfo = debug.getinfo
 local traceback = debug.traceback
 local floor = math.floor
@@ -22,7 +22,7 @@ function Common.assert_not_runtime()
     assert(package.lifecycle ~= package.lifecycle_stage.runtime, "Can not be called during runtime")
 end
 
-local assert_not_closure_fmt = "Can not be called with the closure %s at runtime"
+--[[local assert_not_closure_fmt = "Can not be called with the closure %s at runtime"
 --- Raise an error if a function is a closure and we are in runtime
 -- @tparam function func The function to assert is not a closure if we are in runtime
 function Common.assert_not_closure(func)
@@ -33,7 +33,7 @@ function Common.assert_not_closure(func)
             error(assert_not_closure_fmt:format(info.name or "<anonymous>"))
         end
     end
-end
+end]]
 
 local assert_type_fmt = "%s expected to be of type %s but got %s"
 --- Raise an error if the type of a value is not as expected
@@ -47,7 +47,7 @@ function Common.assert_type(value, type_name, value_name)
 end
 
 local assert_argument_fmt = "Bad argument #%d to %s; %s expected to be of type %s but got %s"
---- Raise an error if the type of any argument is not as expected, can be costly, for frequent callers see assert_argument_type
+--[[--- Raise an error if the type of any argument is not as expected, can be costly, for frequent callers see assert_argument_type
 -- @tparam string ... The type for each argument of the calling function
 function Common.assert_argument_types(...)
     local arg_types = {...}
@@ -58,7 +58,7 @@ function Common.assert_argument_types(...)
             error(assert_argument_fmt:format(arg_index, info.name or "<anonymous>", arg_name, arg_types[arg_index]), 2)
         end
     end
-end
+end]]
 
 --- Raise an error if the type of any argument is not as expected, more performant than assert_argument_types, but requires more manual input
 -- @param arg_value The argument to assert the type of
@@ -124,6 +124,16 @@ function Common.get_module_name(level)
     else
         return file_within_module
     end
+end
+
+--- Returns the name of a function in a safe and consistent format
+-- @tparam number|function func The level of the stack to get the name of, a value of 1 is the caller of this function
+-- @treturn string The name of the function at the given stack frame or provided as an argument
+function Common.get_function_name(func)
+	local debug_info = getinfo(func, "Sn")
+    local file_name = debug_info.source:match('^.+/currently%-playing/(.+)$'):sub(1, -5)
+    local func_name = debug_info.name or debug_info.linedefined
+	return "<" .. file_name .. ":" .. func_name .. ">"
 end
 
 --- Attempt a simple autocomplete search from a set of options

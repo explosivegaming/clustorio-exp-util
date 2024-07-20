@@ -3,7 +3,7 @@
 local Clustorio = require("modules/clusterio/api")
 
 --- Enum values for the different lifecycle stages within a factorio module
--- Info on the data lifecycle and how we use it: https://github.com/Refactorio/RedMew/wiki/The-data-lifecycle
+-- Info on the data lifecycle and how we use it: https://lua-api.factorio.com/latest/auxiliary/data-lifecycle.html
 -- We start in control stage and so values 1 thorough 3 are only present for completeness
 package.lifecycle_stage = {
     settings = 1,
@@ -24,6 +24,8 @@ return setmetatable({
     on_load = function() package.lifecycle = package.lifecycle_stage.load end,
     on_configuration_changed = function() package.lifecycle = package.lifecycle_stage.config_change end,
     events = {
+		-- TODO find a reliable way to set to runtime because currently it will desync if accessed before player joined
+        [defines.events.on_player_joined_game] = function() package.lifecycle = package.lifecycle_stage.runtime end,
         [Clustorio.events.on_server_startup] = function() package.lifecycle = package.lifecycle_stage.runtime end,
     }
 }, {

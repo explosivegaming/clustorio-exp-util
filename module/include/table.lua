@@ -169,7 +169,7 @@ function table.deconstruct(tbl, ...)
     for _, key in pairs({...}) do
         table.insert(values, tbl[key])
     end
-    return unpack(values)
+    return table.unpack(values)
 end
 
 --- Chooses a random entry from a table, can only be used during runtime
