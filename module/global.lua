@@ -80,7 +80,7 @@ end
 --- Event Handler, sets initial values if needed and calls all callbacks
 local function on_server_startup()
     local globals = global.exp_global
-    if global.exp_global == nil then
+    if globals == nil then
         globals = {}
         global.exp_global = globals
     end
@@ -93,6 +93,7 @@ local function on_server_startup()
     end
 end
 
+Global.on_init = on_server_startup
 Global.events = {
     [Clustorio.events.on_server_startup] = on_server_startup
 }

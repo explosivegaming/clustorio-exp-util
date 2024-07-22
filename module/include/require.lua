@@ -1,7 +1,5 @@
 --luacheck:ignore global require
---luacheck:ignore global package
 
-local Clustorio = require("modules/clusterio/api")
 local package = require 'modules.exp_util.include.package'
 local loaded = package.loaded
 local _require = require
@@ -20,10 +18,6 @@ end
 return setmetatable({
     on_init = replace,
     on_load = replace,
-    on_configuration_changed = replace,
-    events = {
-        [Clustorio.events.on_server_startup] = replace,
-    }
 }, {
     __call = _require
 })

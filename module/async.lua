@@ -293,7 +293,7 @@ local function on_load()
     for _, pending in ipairs(async_next) do
         local count = Async._queue_pressure[pending.id]
 		if count == nil then
-			warn("Pending async function missing after load: " .. pending.id)
+			log("Warning: Pending async function missing after load: " .. pending.id)
 			Async._functions[pending.id] = function() end -- NOP
 			count = 0
 		end
@@ -302,7 +302,7 @@ local function on_load()
     for _, pending in ipairs(async_queue) do
         local count = Async._queue_pressure[pending.id]
 		if count == nil then
-			warn("Pending async function missing after load: " .. pending.id)
+			log("Warning: Pending async function missing after load: " .. pending.id)
 			Async._functions[pending.id] = function() end -- NOP
 			count = 0
 		end
@@ -320,6 +320,7 @@ local function on_server_startup()
 end
 
 Async.on_load = on_load
+Async.on_init = on_server_startup
 Async.events[defines.events.on_tick] = on_tick
 Async.events[Clustorio.events.on_server_startup] = on_server_startup
 return Async
