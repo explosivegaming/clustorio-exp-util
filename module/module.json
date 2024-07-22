@@ -8,8 +8,7 @@
 	],
 	"require": [
 		"include/math.lua",
-		"include/table.lua",
-		"include/print.lua"
+		"include/table.lua"
 	],
 	"dependencies": {
 		"clusterio": "*"

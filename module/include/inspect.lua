@@ -161,25 +161,26 @@ local function makePath(path, ...)
   return newPath
 end
 
-local function processRecursive(process, item, path, visited)
+-- Cooldude2606: Modified this to respect the depth option
+local function processRecursive(process, item, path, visited, depth)
 
     if item == nil then return nil end
     if visited[item] then return visited[item] end
 
     local processed = process(item, path)
-    if type(processed) == 'table' then
+    if type(processed) == 'table' and (depth == nil or depth > 0) then
       local processedCopy = {}
       visited[item] = processedCopy
       local processedKey
 
       for k, v in pairs(processed) do
-        processedKey = processRecursive(process, k, makePath(path, k, inspect.KEY), visited)
+        processedKey = processRecursive(process, k, makePath(path, k, inspect.KEY), visited, depth and depth - 1)
         if processedKey ~= nil then
-          processedCopy[processedKey] = processRecursive(process, v, makePath(path, processedKey), visited)
+          processedCopy[processedKey] = processRecursive(process, v, makePath(path, processedKey), visited, depth and depth - 1)
         end
       end
 
-      local mt  = processRecursive(process, getmetatable(processed), makePath(path, inspect.METATABLE), visited)
+      local mt  = processRecursive(process, getmetatable(processed), makePath(path, inspect.METATABLE), visited, depth and depth - 1)
       setmetatable(processedCopy, mt)
       processed = processedCopy
     end

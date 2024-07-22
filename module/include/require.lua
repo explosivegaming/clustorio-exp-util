@@ -6,6 +6,7 @@ local package = require 'modules.exp_util.include.package'
 local loaded = package.loaded
 local _require = require
 
+-- This replace function is used to avoid additional lines in stack traces during control stage
 local function replace()
 	require = function(path)
 		if package.lifecycle == package.lifecycle_stage.runtime then

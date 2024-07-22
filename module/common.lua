@@ -128,11 +128,14 @@ end
 
 --- Returns the name of a function in a safe and consistent format
 -- @tparam number|function func The level of the stack to get the name of, a value of 1 is the caller of this function
+-- @tparam boolean raw When true there will not be any < > around the name
 -- @treturn string The name of the function at the given stack frame or provided as an argument
-function Common.get_function_name(func)
+function Common.get_function_name(func, raw)
 	local debug_info = getinfo(func, "Sn")
-    local file_name = debug_info.source:match('^.+/currently%-playing/(.+)$'):sub(1, -5)
+	local safe_source = debug_info.source:match('^.+/currently%-playing/(.+)$')
+    local file_name = safe_source and safe_source:sub(1, -5) or debug_info.source
     local func_name = debug_info.name or debug_info.linedefined
+	if raw then return file_name .. ":" .. func_name end
 	return "<" .. file_name .. ":" .. func_name .. ">"
 end
 
@@ -159,30 +162,52 @@ function Common.auto_complete(options, input, use_key, rtn_key)
     end
 end
 
---- Formats any value to be presented in a safe and human readable format
+--- Formats any value into a safe representation, useful with table.insert
 -- @param value The value to be formated
 -- @return The formated version of the value
-function Common.format_any(value)
-    if type(value) == "table" or type(value) == "userdata" then
+-- @return True if value is a locale string, nil otherwise
+function Common.safe_value(value)
+	if type(value) == "table" or type(value) == "userdata" then
         if type(value.__self) == "userdata" or type(value) == "userdata" then
-            if value.valid then -- userdata
-                return "<userdata:"..value.object_name..">"
-            else -- invalid userdata
-                return "<userdata:"..value.object_name..":invalid>"
-            end
+			local success, rtn = pcall(function() -- some userdata doesnt contain "valid"
+				if value.valid then -- userdata
+					return "<userdata:"..value.object_name..">"
+				else -- invalid userdata
+					return "<userdata:"..value.object_name..":invalid>"
+				end
+			end)
+			return success and rtn or "<userdata:"..value.object_name..">"
         elseif type(value[1]) == "string" and string.find(value[1], ".+[.].+") and not string.find(value[1], "%s") then
-            return value -- locale string
-        elseif getmetatable(value) ~= nil and not tostring(value):find("table: 0x") then
+            return value, true -- locale string
+        elseif tostring(value) ~= "table" then
             return tostring(value) -- has __tostring metamethod
-        else -- plain table
-            return table.inspect(value, {depth=5, indent=' ', newline='\n'})
+		else -- plain table
+            return value
         end
     elseif type(value) == "function" then -- function
-        local func_name = debug.getinfo(2, "n").name or "anonymous"
-        return "<function:"..func_name..">"
+        return "<function:"..Common.get_function_name(value, true)..">"
     else -- not: table, userdata, or function
         return tostring(value)
     end
+end
+
+--- Formats any value to be presented in a safe and human readable format
+-- @param value The value to be formated
+-- @param[opt] tableAsJson If table values should be returned as json
+-- @param[opt] maxLineCount If table newline count exceeds provided then it will be inlined
+-- @return The formated version of the value
+function Common.format_any(value, tableAsJson, maxLineCount)
+	local formatted, is_locale_string = Common.safe_value(value)
+    if type(formatted) == "table" and not is_locale_string then
+		if tableAsJson then
+			local success, rtn = pcall(game.table_to_json, value)
+			if success then return rtn end
+		end
+        local rtn = table.inspect(value, {depth=5, indent=' ', newline='\n', process=Common.safe_value})
+		if maxLineCount == nil or select(2, rtn:gsub("\n", "")) < maxLineCount then return rtn end
+		return table.inspect(value, {depth=5, indent='', newline='', process=Common.safe_value})
+	end
+	return formatted
 end
 
 --- Format a tick value into one of a selection of pre-defined formats (short, long, clock)

@@ -94,6 +94,7 @@ script.register_metatable("AsyncFunction", Async._metatable)
 --- Globals
 local async_next -- Stores a queue of async functions to be executed on the next tick
 local async_queue -- Stores a queue of async functions to be executed on a later tick
+local on_tick_mutex = false -- It is not safe to modify the globals while this value is true
 
 --- Insert an item into the priority queue
 local function add_to_queue(pending)
@@ -134,6 +135,7 @@ end
 --- Run an async function on the next tick, this is the default and can be used to bypass permission groups
 -- @param ... The arguments to call the function with
 function Async._prototype:start_soon(...)
+	assert(not on_tick_mutex, "Cannot queue new async call during execution of another")
     assert(Async._functions[self.id], "Async function is not registered")
     Async._queue_pressure[self.id] = Async._queue_pressure[self.id] + 1
 
@@ -148,6 +150,7 @@ end
 -- @param ... The arguments to call the function with
 function Async._prototype:start_after(ticks, ...)
 	ExpUtil.assert_argument_type(ticks, "number", 1, "ticks")
+	assert(not on_tick_mutex, "Cannot queue new async call during execution of another")
     assert(Async._functions[self.id], "Async function is not registered")
     Async._queue_pressure[self.id] = Async._queue_pressure[self.id] + 1
 
@@ -161,6 +164,7 @@ end
 --- Run an async function on the next tick if the function is not already queued, allows singleton task/thread behaviour
 -- @param ... The arguments to call the function with
 function Async._prototype:start_task(...)
+	assert(not on_tick_mutex, "Cannot queue new async call during execution of another")
     assert(Async._functions[self.id], "Async function is not registered")
     if Async._queue_pressure[self.id] > 0 then return end
     self:start_soon(...)
@@ -169,6 +173,7 @@ end
 --- Run an async function on this tick, then queue it based on its return value
 -- @param ... The arguments to call the function with
 function Async._prototype:start_now(...)
+	assert(not on_tick_mutex, "Cannot queue new async call during execution of another")
     assert(Async._functions[self.id], "Async function is not registered")
 	local status, rtn1, rtn2 = Async._functions[self.id](...)
     if status == Async.status.continue then
@@ -192,7 +197,9 @@ end
 -- Return values used by async functions
 -- @section async-status
 
-local empty_table = {} -- File scope to allow for reuse
+local empty_table = setmetatable({}, {
+	__index = function() error("Field 'Returned' is Immutable") end
+}) -- File scope to allow for reuse
 
 --- Default status, will raise on_function_complete
 -- @param ... The return value of the async call
